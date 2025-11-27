@@ -1,7 +1,7 @@
 # Model Configuration
 model:
   # Tiny模型配置
-  sam2_checkpoint: "checkpoints/sam2_hiera_tiny.pt"
+  sam2_checkpoint: "sam_checkpoints/sam2_hiera_tiny.pt"
   sam2_model_cfg: "sam2_hiera_t.yaml"
   sam2_config_dir: "configs/sam2_configs"
   
@@ -58,4 +58,4 @@ logging:
   save_dir: "experiments"
   log_interval: 10
   val_interval: 1
-  save_interval: 5
+  save_interval: 100

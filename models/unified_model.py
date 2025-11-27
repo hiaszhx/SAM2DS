@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F  # <--- 必须添加这一行，否则 F.interpolate 会报错
 from .sam2_model import SAM2Wrapper, SAM2EncoderWithResize
 from .detection_branch import DetectionBranch
 from .segmentation_branch import SegmentationBranch
@@ -56,6 +57,9 @@ class UnifiedModel(nn.Module):
                 'prompt_coords': 使用的prompt坐标
             }
         """
+        # 1. 获取输入图像的原始尺寸 (H, W)
+        input_shape = images.shape[-2:]
+
         # 编码
         encoder_features = self.encoder(images)
         
@@ -73,6 +77,15 @@ class UnifiedModel(nn.Module):
         
         # 分割分支
         segmentation_output = self.segmentation_branch(encoder_features, prompt_coords_used)
+        
+        # 强制将分割结果上采样到与输入图像一致的尺寸
+        if segmentation_output.shape[-2:] != input_shape:
+            segmentation_output = F.interpolate(
+                segmentation_output, 
+                size=input_shape, 
+                mode='bilinear', 
+                align_corners=False
+            )
         
         return {
             'detection': detection_output,
