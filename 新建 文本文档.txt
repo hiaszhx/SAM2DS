@@ -1,1 +1,20 @@
 python train.py --config configs/config.yaml
+
+# 1. 克隆官方仓库
+git clone https://github.com/facebookresearch/segment-anything-2.git
+
+# 2. 进入目录
+cd segment-anything-2
+
+# 3. 安装依赖（确保你已经安装了 PyTorch）
+pip install -e .
+
+# 回到项目根目录
+cd ..
+
+# 创建 checkpoints 文件夹（如果没有）
+mkdir -p sam_checkpoints
+
+# 下载 tiny 模型权重 (你需要确保下载链接有效，或者从 SAM2 官方仓库获取)
+# 通常在 segment-anything-2/checkpoints/ 下有下载脚本，或者直接手动下载
+wget https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_tiny.pt -P sam_checkpoints/

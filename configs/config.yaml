@@ -1,8 +1,8 @@
 # Model Configuration
 model:
   # Tiny模型配置
-  sam2_checkpoint: "sam_checkpoints/sam2_hiera_tiny.pt"
-  sam2_model_cfg: "sam2_hiera_t.yaml"
+  sam2_checkpoint: "sam_checkpoints/sam2.1_hiera_tiny.pt"
+  sam2_model_cfg: "sam2.1_hiera_t.yaml"
   sam2_config_dir: "configs/sam2_configs"
   
   image_size: 1024  # SAM2标准输入尺寸
