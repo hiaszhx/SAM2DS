@@ -1,0 +1,61 @@
+# Model Configuration
+model:
+  # Tiny模型配置
+  sam2_checkpoint: "checkpoints/sam2_hiera_tiny.pt"
+  sam2_model_cfg: "sam2_hiera_t.yaml"
+  sam2_config_dir: "configs/sam2_configs"
+  
+  image_size: 1024  # SAM2标准输入尺寸
+  input_size: 256   # 实际训练时的输入尺寸
+  freeze_image_encoder: true
+  adapter_dim: 256
+  detection_hidden_dim: 512
+
+  
+# Training Configuration
+training:
+  batch_size: 8
+  num_epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  warmup_epochs: 5
+  gt_prompt_ratio_schedule:
+    start_epoch: 0
+    end_epoch: 10
+    start_ratio: 1.0
+    end_ratio: 0.0
+  
+# Loss Configuration
+loss:
+  seg_loss_weight: 1.0
+  det_loss_weight: 1.0
+  focal_alpha: 0.25
+  focal_gamma: 2.0
+  dice_weight: 0.5
+  bce_weight: 0.5
+  
+# Dataset Configuration
+dataset:
+  name: "NUDT-SIRST"
+  root_dir: "datasets/NUDT-SIRST"
+  train_split: "train"
+  val_split: "test"
+  num_workers: 4
+  
+# Optimizer Configuration
+optimizer:
+  type: "AdamW"
+  betas: [0.9, 0.999]
+  
+# Scheduler Configuration
+scheduler:
+  type: "CosineAnnealingLR"
+  T_max: 100
+  eta_min: 0.00001
+  
+# Logging Configuration
+logging:
+  save_dir: "experiments"
+  log_interval: 10
+  val_interval: 1
+  save_interval: 5
