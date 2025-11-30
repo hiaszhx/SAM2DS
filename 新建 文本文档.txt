@@ -1,5 +1,8 @@
 python train.py --config configs/config.yaml
 
+pip install albumentations
+pip install scikit-learn
+
 # 1. 克隆官方仓库
 git clone https://github.com/facebookresearch/segment-anything-2.git
 
