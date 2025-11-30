@@ -1,84 +1,101 @@
+# models/unified_model.py
 import torch
 import torch.nn as nn
-import torch.nn.functional as F  # <--- 必须添加这一行，否则 F.interpolate 会报错
-from .sam2_model import SAM2Wrapper, SAM2EncoderWithResize
+import torch.nn.functional as F
+from .sam2_model import SAM2Wrapper
 from .detection_branch import DetectionBranch
 from .segmentation_branch import SegmentationBranch
 
+class FeatureFusion(nn.Module):
+    """
+    轻量级特征融合模块：将 SAM2 的多尺度特征自顶向下融合。
+    """
+    def __init__(self, in_channels=256):
+        super().__init__()
+        self.fusion_conv = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, 3, padding=1),
+            nn.BatchNorm2d(in_channels),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, features):
+        # features: [s4, s8, s16, s32]
+        fused = features[-1] # s32
+        
+        for i in range(len(features) - 2, -1, -1):
+            fused = F.interpolate(fused, scale_factor=2, mode='bilinear', align_corners=False)
+            target_feat = features[i]
+            if fused.shape[-2:] != target_feat.shape[-2:]:
+                fused = F.interpolate(fused, size=target_feat.shape[-2:], mode='bilinear', align_corners=False)
+            fused = fused + target_feat
+            
+        out = self.fusion_conv(fused)
+        return out
+
 class UnifiedModel(nn.Module):
-    """统一的探测-分割模型"""
-    
+    """
+    Unified Model with Dual Necks and Dual Fusion
+    """
     def __init__(self, config: dict):
         super().__init__()
         
-        # SAM2编码器
-        sam2_wrapper = SAM2Wrapper(
+        # 1. 初始化双 Neck 编码器
+        self.encoder = SAM2Wrapper(
             checkpoint_path=config['model']['sam2_checkpoint'],
             model_cfg=config['model']['sam2_model_cfg'],
             config_dir=config['model'].get('sam2_config_dir', None),
-            freeze_encoder=config['model']['freeze_image_encoder']
-        )
-        
-        # 带尺寸调整的编码器
-        self.encoder = SAM2EncoderWithResize(
-            sam2_wrapper=sam2_wrapper,
-            target_size=config['model']['input_size']
+            freeze_trunk=config['model'].get('freeze_trunk', True),
+            freeze_neck_det=config['model'].get('freeze_neck_det', False),
+            freeze_neck_seg=config['model'].get('freeze_neck_seg', False)
         )
         
         encoder_dim = self.encoder.get_encoder_output_dim()
-        print(f"Encoder output dimension: {encoder_dim}")
         
-        # 探测分支
+        # 2. 初始化两个独立的特征融合模块
+        self.fusion_det = FeatureFusion(in_channels=encoder_dim)
+        self.fusion_seg = FeatureFusion(in_channels=encoder_dim)
+        
+        # 3. 探测分支
         self.detection_branch = DetectionBranch(
             in_channels=encoder_dim,
             hidden_dim=config['model']['detection_hidden_dim'],
             adapter_dim=config['model']['adapter_dim']
         )
         
-        # 分割分支
+        # 4. 分割分支
         self.segmentation_branch = SegmentationBranch(
             in_channels=encoder_dim,
             adapter_dim=config['model']['adapter_dim']
         )
         
-        print("Unified model initialized successfully!")
+        print("Unified model initialized with Dual Necks and Dual Fusion paths.")
     
     def forward(self, images: torch.Tensor, prompt_coords: torch.Tensor = None, 
                 use_detection_prompt: bool = False) -> dict:
-        """
-        Args:
-            images: 输入图像 [B, 3, H, W]
-            prompt_coords: GT坐标 [B, 2] (可选)
-            use_detection_prompt: 是否使用探测分支的输出作为prompt
-        Returns:
-            dict: {
-                'detection': 探测结果,
-                'segmentation': 分割结果,
-                'prompt_coords': 使用的prompt坐标
-            }
-        """
-        # 1. 获取输入图像的原始尺寸 (H, W)
+        
         input_shape = images.shape[-2:]
 
-        # 编码
-        encoder_features = self.encoder(images)
+        # 1. 编码 (获取两组多尺度特征)
+        features_det_list, features_seg_list = self.encoder(images)
         
-        # 探测分支
-        detection_output = self.detection_branch(encoder_features)
+        # 2. 独立融合
+        fused_det = self.fusion_det(features_det_list) # 给探测分支用
+        fused_seg = self.fusion_seg(features_seg_list) # 给分割分支用
         
-        # 确定使用的prompt
+        # 3. 探测分支 (使用 fused_det)
+        detection_output = self.detection_branch(fused_det)
+        
+        # 4. 确定 Prompt
         if use_detection_prompt:
-            # 使用探测分支输出
             prompt_coords_used = detection_output['coords'].detach()
         else:
-            # 使用GT
-            assert prompt_coords is not None, "GT prompt required when not using detection"
+            assert prompt_coords is not None
             prompt_coords_used = prompt_coords
         
-        # 分割分支
-        segmentation_output = self.segmentation_branch(encoder_features, prompt_coords_used)
+        # 5. 分割分支 (使用 fused_seg 和 prompt)
+        segmentation_output = self.segmentation_branch(fused_seg, prompt_coords_used)
         
-        # 强制将分割结果上采样到与输入图像一致的尺寸
+        # 尺寸恢复
         if segmentation_output.shape[-2:] != input_shape:
             segmentation_output = F.interpolate(
                 segmentation_output, 
